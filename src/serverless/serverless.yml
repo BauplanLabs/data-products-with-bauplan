@@ -5,7 +5,7 @@ provider:
   runtime: python3.11
   region: us-east-1
   memorySize: 3008
-  timeout: 120
+  timeout: 600
   ecr:
     images:
       dataproductimage:
@@ -32,8 +32,11 @@ provider:
 functions:
   dataProductFunction:
     ephemeralStorageSize: 1024
+    environment:
+      bauplan_key: ${env:BPLN_KEY}
+      bauplan_user: jacopo
     image:
       name: dataproductimage
     events:
-      - schedule: rate(10 minutes)
+      - schedule: rate(30 minutes)
     

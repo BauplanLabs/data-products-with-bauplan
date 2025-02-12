@@ -32,22 +32,18 @@
                             },
                             "services": {
                                 "production": {
-                                    "name:": "datalake",
-                                    "serverInfo": {
-                                        "connectionProtocols": {
-                                            "iceberg": {
-                                                "catalog-type": "rest",
-                                                "uri": "http://iceberg-rest-server:8181"
-                                            }
-                                        }
+                                    "name:": "bauplan",
+                                    "catalogInfo": {
+                                        "namespace": "tlc_trip_product",
+                                        "branch": "main"
                                     }
                                 }
                             },
                             "schema": {
-                                "databaseName": "amountStatsTable",
+                                "databaseName": "tripsTable",
                                 "tables": [
                                     {
-                                        "tpep_pickup_datetime ": {
+                                        "tpep_pickup_datetime": {
                                             "type": "string"
                                         },
                                         "Tip_amount": {
@@ -71,7 +67,7 @@
             {
                 "name": "amountStats",
                 "version": "1.0.0",
-                "displayName": "Exposes daily stats about the avarage amount per trip",
+                "displayName": "Exposes daily stats about the average amount per trip",
                 "promises": {
                     "api": {
                         "specification": "datastoreapi",
@@ -84,14 +80,10 @@
                             },
                             "services": {
                                 "production": {
-                                    "name:": "datalake",
-                                    "serverInfo": {
-                                        "connectionProtocols": {
-                                            "iceberg": {
-                                                "catalog-type": "rest",
-                                                "uri": "http://iceberg-rest-server:8181"
-                                            }
-                                        }
+                                    "name:": "bauplan",
+                                    "catalogInfo": {
+                                        "namespace": "tlc_trip_product",
+                                        "branch": "main"
                                     }
                                 }
                             },
@@ -120,7 +112,7 @@
                                                             "regex": "^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/\\d{4}$"
                                                         },
                                                         "mustBeEqualTo": "100",
-                                                        "unit": "percet"
+                                                        "unit": "percent"
                                                     }
                                                 ]
                                             },
