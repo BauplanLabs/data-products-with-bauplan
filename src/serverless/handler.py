@@ -14,11 +14,11 @@ print(f"Bauplan client created for user {bpln_user}")
 MY_BUCKET = 'hello-data-products-with-bauplan'
 DATA_FOLDER = 'raw'
 CODE_REPO_URL = 'https://github.com/BauplanLabs/bauplan-data-products-preview'
-GB_PER_ITERATION = 1.0
+GB_PER_ITERATION = 0.2
 NUMERICAL_COLUMNS = [ 'Tip_amount', 'Tolls_amount']
 # input port vars are the same as the JSON configuration - they are included
 # here for the mock generation of the streaming of new data
-INPUT_PORT_TABLE = 'tripsTable"'
+INPUT_PORT_TABLE = 'tripsTable'
 INPUT_PORT_NAMESPACE = 'tlc_trip_record'
 
 
@@ -46,7 +46,7 @@ def _add_mock_data_to_input_port(
     rows = int(gb_per_iteration * 1024**3 / n_columns / 8)
     cols = [np.random.randint(1, 10, rows) for _ in range(n_columns)]
     total_col = np.array(cols).sum(axis=0)
-    all_cols = cols + [total_col] + [formatted_date_as_string for _ in range(rows)]
+    all_cols = cols + [total_col] + [[formatted_date_as_string for _ in range(rows)]]
     t = pa.Table.from_arrays(all_cols, names=numerical_columns + ['Total_amount', 'tpep_pickup_datetime'] )
     # using a temporary file, do a WAP ingestion into the table
     with tempfile.NamedTemporaryFile() as tmp:
@@ -56,6 +56,13 @@ def _add_mock_data_to_input_port(
         s3_uri = f"s3://{bucket}/{data_folder}/{file_name}"
         ### A: start an ingestion branch
         ingestion_branch = f'{bpln_user}.ingestion_{str(uuid.uuid4())}'
+        # clean up the branch if it exists - as a demo, we are making
+        # all the code stateless and easier to run
+        if bpln_client.has_branch(ingestion_branch):
+            bpln_client.delete_branch(ingestion_branch)
+            
+        bpln_client.create_branch(ingestion_branch, 'main')
+        print("Branch created!")
         ### B: create (or replace) the table in Bauplan
         # note: being a mock of an input port, we are replacing the table
         # everytime to make the demo stateless and easier to run - this
@@ -133,8 +140,14 @@ def lambda_handler(event, context):
         # and run the data product logic with the Bauplan SDK
         # The output will be the table specified as output port in the shared
         # data product configuration
-
-
+        #pipeline_project_path = os.path.join(repo_path, "src", "bpln_pipeline")
+        #run_state = bpln_client.run(
+            #project_dir=pipeline_project_path,
+            #branch_name='',
+            #namespace=INPUT_PORT_NAMESPACE,
+            #parameters={},
+            #client_timeout=500
+        #)
 
     end = time.time()
     # store in Cloudwatch the total number of records processed

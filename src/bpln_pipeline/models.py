@@ -47,7 +47,7 @@ def calculate_trip_stats(
     print(f"\n\n===> Number of trips retrieved: {trips.num_rows}\n\n")
     df = trips.to_pandas()
     # calculate the average of the numerical columns
-    result = df.groupby("date_as_string", as_index=False).agg(
+    result = df.groupby("tpep_pickup_datetime", as_index=False).agg(
         avgTip=("Tip_amount", "mean"),
         avgTolls=("Tolls_amount", "mean"),
         avgTotal=("Total_amount", "mean"),
