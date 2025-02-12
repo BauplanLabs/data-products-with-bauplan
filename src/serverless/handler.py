@@ -156,7 +156,7 @@ def lambda_handler(event, context):
             print("Running the pipeline")
             run_state = bpln_client.run(
                 project_dir=pipeline_project_path,
-                branch_name=sandox_branch,
+                ref=sandox_branch,
                 namespace=INPUT_PORT_NAMESPACE,
                 #parameters={},
                 client_timeout=500
