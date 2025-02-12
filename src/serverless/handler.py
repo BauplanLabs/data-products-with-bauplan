@@ -96,7 +96,7 @@ def _add_mock_data_to_input_port(
         bpln_client.delete_branch(ingestion_branch)
         print("Branch deleted!")
     
-    return 
+    return rows
     
 
 # the lambda handler function, triggered on a schedule
@@ -133,21 +133,53 @@ def lambda_handler(event, context):
         repo_path = os.path.join(tmpdirname, "repo")
         subprocess.check_call(["git", "clone", CODE_REPO_URL, repo_path])
         # make sure the files are in the right place, check for data-product-descriptor.json
-        assert os.path.exists(os.path.join(repo_path, "README.md")), "No product descriptor found"
+        assert os.path.exists(os.path.join(repo_path, "data-product-descriptor.json")), "data-product-descriptor.json not found in the repository"
         print(f"Repository cloned correctly to {repo_path}")
         ### 3: WE TRIGGER THE DATA PRODUCT LOGIC ###
         # We get the code from git (can be customized to branches or tags etc.)
         # and run the data product logic with the Bauplan SDK
         # The output will be the table specified as output port in the shared
         # data product configuration
-        #pipeline_project_path = os.path.join(repo_path, "src", "bpln_pipeline")
-        #run_state = bpln_client.run(
-            #project_dir=pipeline_project_path,
-            #branch_name='',
-            #namespace=INPUT_PORT_NAMESPACE,
-            #parameters={},
-            #client_timeout=500
-        #)
+        pipeline_project_path = os.path.join(repo_path, "src", "bpln_pipeline")
+        sandox_branch = f'{bpln_user}.sandbox_{INPUT_PORT_TABLE}_{str(uuid.uuid4())}'
+        # 3.a: create a sandbox branch to run the pipeline SAFELY and check the data quality
+        # before making it available in the output port (i.e. merging it into main)
+        
+        # note: since it's a demo, we are deleting the branch if it exists, to make
+        # the code stateless and easier to run
+        if bpln_client.has_branch(sandox_branch):
+            bpln_client.delete_branch(sandox_branch)
+            
+        bpln_client.create_branch(sandox_branch, 'main')
+        # make sure to catch any error and delete the branch if something goes wrong
+        try:
+            print("Running the pipeline")
+            run_state = bpln_client.run(
+                project_dir=pipeline_project_path,
+                branch_name=sandox_branch,
+                namespace=INPUT_PORT_NAMESPACE,
+                #parameters={},
+                client_timeout=500
+            )
+            print(f"Pipeline run, id: {run_state.job_id}")
+            # if all goes well, we merge the branch into main
+            # as the output port of the data product
+            bpln_client.merge_branch(
+                source_ref=sandox_branch,
+                into_branch='main',
+            )
+            print(f"Branch {sandox_branch} merged into main!")
+            # finally, we delete the temoporart branch
+            bpln_client.delete_branch(sandox_branch)
+            print(f"Branch {sandox_branch} deleted!")
+        except Exception as e:
+            # if something goes wrong, we do NOT merge the branch
+            # to avoid giving consumers of the data product bad data
+            # and we do NOT delete the branch, so we can inspect the
+            # state of the pipeline!
+            # for now, let's just print the error
+            print(f"Error: {e}")
+            print(f"Branch {sandox_branch} was NOT deleted!")
 
     end = time.time()
     # store in Cloudwatch the total number of records processed
@@ -158,7 +190,7 @@ def lambda_handler(event, context):
             "eventId": str(uuid.uuid4()),
         },
         "data": {
-            "totalNewRecords": n_records
+            "totalNewRows": n_records
         }
     })
 
