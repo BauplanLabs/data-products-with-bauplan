@@ -1,0 +1,10 @@
+project:
+    id: a1d6ac26-cf19-4c98-b269-f5ea0cedec0c
+    name: data_product_pipeline
+
+parameters:
+    trip_date:
+        type: str
+        default: "2025-02-11"
+
+    
