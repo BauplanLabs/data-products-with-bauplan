@@ -5,11 +5,9 @@ import bauplan
 import os
 import subprocess
 from datetime import datetime, timezone
+import json
 
 
-bpln_client = bauplan.Client(api_key=os.environ['bauplan_key'])
-bpln_user = os.environ['bauplan_user']
-print(f"Bauplan client created for user {bpln_user}")
 # some constants - make sure to use the correct bucket and git repo ;-)
 MY_BUCKET = 'hello-data-products-with-bauplan'
 DATA_FOLDER = 'raw'
@@ -21,6 +19,113 @@ NUMERICAL_COLUMNS = [ 'Tip_amount', 'Tolls_amount']
 INPUT_PORT_TABLE = 'tripsTable'
 INPUT_PORT_NAMESPACE = 'tlc_trip_record'
 
+
+
+#### CODE GEN SECTION ####
+
+expectation_function_template = """
+# generic imports
+from datetime import datetime, timezone, timedelta
+# bauplan imports
+import bauplan
+{imports}
+
+@bauplan.expectation()
+@bauplan.python('3.11')
+def {product_name}_quality_checks(
+    data=bauplan.Model('{product_name}'),
+    # we need the parameter for table level quality check!
+    # this could be parameterized as well
+    trip_date=bauplan.Parameter('trip_date'),
+):
+    {function_body}
+    return True
+"""
+
+import_template = """
+from bauplan.standard_expectations import {exp_method}
+"""
+
+check_template = """
+    assert {exp_method}(data, '{column_to_check}')
+"""
+
+freshness_template = """
+    now_utc = datetime.now(timezone.utc)
+    parsed_date = datetime.strptime(trip_date, "%d/%m/%Y").replace(tzinfo=timezone.utc)
+    assert now_utc - timedelta(days={days}) < parsed_date <= now_utc
+"""
+
+
+def _table_quality_to_code(
+    table_qualities: list
+) -> str:
+    """
+    
+    Take the table quality checks and generate the code for freshness -
+    make sure the DAG trip date parameter is within X days from current time.
+    
+    We throw an error if the product specifies a table quality check that is not
+    supported by this function.
+    
+    """
+    for t in table_qualities:
+        if t['rule'] == 'freshness' and  t['unit'] == 'day':
+            return freshness_template.format(days=int(t['mustBeLessThan']))
+        else:
+            raise ValueError(f"Unknown table quality rule: {t})")
+
+    return ''
+
+
+def _property_quality_to_code(
+    property_to_qualities: dict,   
+):
+    """
+
+    Take the property quality checks and generate the code for the expectations.
+    We return two strings, one representing the imports and the other the asserts.
+
+    If we encounter a quality check that is not supported, we throw an error.
+
+    """ 
+
+    imports = []
+    asserts = []
+    for col, checks in property_to_qualities.items():
+        for c in checks:
+            if c['rule'] == 'duplicateCount' and int(c['mustBeEqualTo']) == 0:
+                imports.append(import_template.format(exp_method='expect_column_all_unique'))
+                asserts.append(check_template.format(exp_method='expect_column_all_unique', column_to_check=col))
+            elif c['rule'] == 'null' and int(c['mustBeEqualTo']) == 0:
+                imports.append(import_template.format(exp_method='expect_column_no_nulls'))
+                asserts.append(check_template.format(exp_method='expect_column_no_nulls', column_to_check=col))
+            else:
+                raise ValueError(f"Unknown column quality rule: {c})")
+    
+    return '\n'.join(imports), '\n'.join(asserts)
+
+
+def _generate_expectation_file_as_str(
+    product_name: str,
+    property_to_qualities: dict, # map of cols to quality checks
+    table_qualities: list # list of checks at the table level
+) -> str:
+    
+    table_quality_code = _table_quality_to_code(table_qualities)
+    column_quality_imports, column_quality_checks = _property_quality_to_code(property_to_qualities)
+    full_code = expectation_function_template.format(
+        product_name=product_name,
+        imports=column_quality_imports,
+        function_body=table_quality_code + column_quality_checks
+    )
+    
+    return full_code
+
+#### END CODE GEN SECTION ####
+
+
+#### MOCK INPUT PORT SECTION ####
 
 def _add_mock_data_to_input_port(
     bpln_client,
@@ -97,11 +202,18 @@ def _add_mock_data_to_input_port(
         print("Branch deleted!")
     
     return rows
+
+#### END MOCK INPUT PORT SECTION ####
     
+
+#### LAMBDA ENTRY POINT AND PRODUCT RUNNER SECTION ####
 
 # the lambda handler function, triggered on a schedule
 def lambda_handler(event, context):
     start = time.time()
+    bpln_client = bauplan.Client(api_key=os.environ['bauplan_key'])
+    bpln_user = os.environ['bauplan_user']
+    print(f"Bauplan client created for user {bpln_user}")
     
     ### 0: at the start of the function (which runs on a schedule)
     # we get the current date as a string DD/MM/YYYY - this will be used
@@ -135,13 +247,29 @@ def lambda_handler(event, context):
         # make sure the files are in the right place, check for data-product-descriptor.json
         assert os.path.exists(os.path.join(repo_path, "data-product-descriptor.json")), "data-product-descriptor.json not found in the repository"
         print(f"Repository cloned correctly to {repo_path}")
+        with open(os.path.join(repo_path, "data-product-descriptor.json")) as f:
+            d = json.load(f)
+        
+        # parse out relevant parts of the data product descriptor dynamically
+        output_port_table_def = d['interfaceComponents']['outputPorts'][0]['promises']['api']['definition']['schema']['tables'][0]
+        product_name = d['interfaceComponents']['outputPorts'][0]['promises']['api']['definition']['schema']['databaseName']
+        service = d['interfaceComponents']['outputPorts'][0]['promises']['api']['definition']['services']['production']['catalogInfo']
+        output_namespace = service['namespace']
+        output_branch = service['branch']
+        # make sure input and output namespaces are the same
+        assert output_namespace == INPUT_PORT_NAMESPACE, "Input and output namespaces are different!"
+        project_folder = d['internalComponents']['applicationComponents'][0]['configs']['project_folder']
+        table_qualities = output_port_table_def['quality']
+        table_properties = output_port_table_def['properties']
+        property_to_qualities = {k: v['quality'] for k, v in table_properties.items() if 'quality' in v}
+        
         ### 3: WE TRIGGER THE DATA PRODUCT LOGIC ###
         # We get the code from git (can be customized to branches or tags etc.)
         # and run the data product logic with the Bauplan SDK
         # The output will be the table specified as output port in the shared
         # data product configuration
-        pipeline_project_path = os.path.join(repo_path, "src", "bpln_pipeline")
-        sandox_branch = f'{bpln_user}.sandbox_{INPUT_PORT_TABLE}_{str(uuid.uuid4())}'
+        pipeline_project_path = os.path.join(repo_path, "src", project_folder)
+        sandox_branch = f'{bpln_user}.sandbox_{product_name}_{str(uuid.uuid4())}'
         # 3.a: create a sandbox branch to run the pipeline SAFELY and check the data quality
         # before making it available in the output port (i.e. merging it into main)
         
@@ -150,7 +278,18 @@ def lambda_handler(event, context):
         if bpln_client.has_branch(sandox_branch):
             bpln_client.delete_branch(sandox_branch)
             
-        bpln_client.create_branch(sandox_branch, 'main')
+        bpln_client.create_branch(sandox_branch, output_branch)
+        # 3.b: generate the expectation file dynamically based on the contract
+        _exp_code = _generate_expectation_file_as_str(
+            product_name,
+            property_to_qualities,
+            table_qualities
+        )
+        # write the expectation file to the pipeline_project_path as a py file
+        with open(os.path.join(pipeline_project_path, "expectations.py"), 'w') as f:
+            f.write(_exp_code)
+        
+        # 3.c: run the pipeline and merge the branch if successful
         # make sure to catch any error and delete the branch if something goes wrong
         try:
             print("Running the pipeline")
@@ -158,7 +297,11 @@ def lambda_handler(event, context):
                 project_dir=pipeline_project_path,
                 ref=sandox_branch,
                 namespace=INPUT_PORT_NAMESPACE,
-                #parameters={},
+                # dynamically pass the trip date as a parameter
+                # note: in this example, this will be used for freshness checks!
+                parameters={
+                    'trip_date': formatted_date_as_string
+                },
                 client_timeout=500
             )
             print(f"Pipeline run, id: {run_state.job_id}")
@@ -166,10 +309,10 @@ def lambda_handler(event, context):
             # as the output port of the data product
             bpln_client.merge_branch(
                 source_ref=sandox_branch,
-                into_branch='main',
+                into_branch=output_branch,
             )
             print(f"Branch {sandox_branch} merged into main!")
-            # finally, we delete the temoporart branch
+            # finally, we delete the temporary branch
             bpln_client.delete_branch(sandox_branch)
             print(f"Branch {sandox_branch} deleted!")
         except Exception as e:
@@ -182,7 +325,8 @@ def lambda_handler(event, context):
             print(f"Branch {sandox_branch} was NOT deleted!")
 
     end = time.time()
-    # store in Cloudwatch the total number of records processed
+    
+    ### 4: ALL IS DONE, SAY GOODBYE AND PRINT OUT SOME STATS TO CLOUDWATCH ###
     print({
         "metadata": {
             "timeMs": int((end - start) * 1000.0),
@@ -195,3 +339,24 @@ def lambda_handler(event, context):
     })
 
     return True
+
+#### END LAMBDA ENTRY POINT AND PRODUCT RUNNER SECTION ####
+
+
+# this is a trick to run the lambda handler locally and test the 
+# code generation  without deploying to AWS
+if __name__ == '__main__':
+    with open('../../data-product-descriptor.json') as f:
+        d = json.load(f)
+    
+    output_port_table_def = d['interfaceComponents']['outputPorts'][0]['promises']['api']['definition']['schema']['tables'][0]
+    product_name = d['interfaceComponents']['outputPorts'][0]['promises']['api']['definition']['schema']['databaseName']
+    table_qualities = output_port_table_def['quality']
+    table_properties = output_port_table_def['properties']
+    property_to_qualities = {k: v['quality'] for k, v in table_properties.items() if 'quality' in v}
+    print(product_name, property_to_qualities, table_qualities)
+    print(_generate_expectation_file_as_str(
+        product_name,
+        property_to_qualities,
+        table_qualities
+    ))

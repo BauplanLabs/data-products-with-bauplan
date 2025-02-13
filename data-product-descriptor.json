@@ -94,7 +94,7 @@
                                         "quality": [
                                              {
                                                 "rule": "freshness",
-                                                "mustBeLessThen": "1",
+                                                "mustBeLessThan": "1",
                                                 "unit": "day"
                                             }],
                                         "properties": {
@@ -107,12 +107,8 @@
                                                         "unit": "row"
                                                     },
                                                     {
-                                                        "rule": "matchFormat",
-                                                        "params": {
-                                                            "regex": "^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/\\d{4}$"
-                                                        },
-                                                        "mustBeEqualTo": "100",
-                                                        "unit": "percent"
+                                                        "rule": "null",
+                                                        "mustBeEqualTo": "0"
                                                     }
                                                 ]
                                             },
@@ -134,5 +130,21 @@
                 }
             }
         ]
+    },
+    "internalComponents": {
+        "applicationComponents": [
+            {
+                "fullyQualifiedName": "urn:dpds:com.bauplan:dataproducts:tripExecution:1:applications:pipeline",
+                "version": "1.0.0",
+                "platform": "bauplan",
+                "applicationType": "batch-sourcing",
+                "configs": {
+                    "repo": "https://github.com/BauplanLabs/bauplan-data-products-preview",
+                    "branch": "main",
+                    "project_folder": "bpln_pipeline"
+                }
+            }
+        ],
+        "infrastructuralComponents": []
     }
 }

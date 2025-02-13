@@ -5,6 +5,6 @@ project:
 parameters:
     trip_date:
         type: str
-        default: "2025-02-11"
+        default: "13/02/2025"
 
     
