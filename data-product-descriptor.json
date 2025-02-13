@@ -34,7 +34,7 @@
                                 "production": {
                                     "name:": "bauplan",
                                     "catalogInfo": {
-                                        "namespace": "tlc_trip_product",
+                                        "namespace": "tlc_trip_record",
                                         "branch": "main"
                                     }
                                 }
@@ -82,7 +82,7 @@
                                 "production": {
                                     "name:": "bauplan",
                                     "catalogInfo": {
-                                        "namespace": "tlc_trip_product",
+                                        "namespace": "tlc_trip_record",
                                         "branch": "main"
                                     }
                                 }
