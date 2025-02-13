@@ -20,7 +20,6 @@ INPUT_PORT_TABLE = 'tripsTable'
 INPUT_PORT_NAMESPACE = 'tlc_trip_record'
 
 
-
 #### CODE GEN SECTION ####
 
 expectation_function_template = """
