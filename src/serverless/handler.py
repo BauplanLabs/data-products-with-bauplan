@@ -341,22 +341,3 @@ def lambda_handler(event, context):
     return True
 
 #### END LAMBDA ENTRY POINT AND PRODUCT RUNNER SECTION ####
-
-
-# this is a trick to run the lambda handler locally and test the 
-# code generation  without deploying to AWS
-# if __name__ == '__main__':
-#     with open('../../data-product-descriptor.json') as f:
-#         d = json.load(f)
-    
-#     output_port_table_def = d['interfaceComponents']['outputPorts'][0]['promises']['api']['definition']['schema']['tables'][0]
-#     product_name = d['interfaceComponents']['outputPorts'][0]['promises']['api']['definition']['schema']['databaseName']
-#     table_qualities = output_port_table_def['quality']
-#     table_properties = output_port_table_def['properties']
-#     property_to_qualities = {k: v['quality'] for k, v in table_properties.items() if 'quality' in v}
-#     print(product_name, property_to_qualities, table_qualities)
-#     print(_generate_expectation_file_as_str(
-#         product_name,
-#         property_to_qualities,
-#         table_qualities
-#     ))
