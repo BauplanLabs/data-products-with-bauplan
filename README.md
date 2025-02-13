@@ -60,7 +60,14 @@ bauplan run --namespace tlc_trip_record --dry-run --preview head
 
 ## Where to go from here?
 
-TBC
+There are of course a few things that could be improved in this reference implementation, when considering a more realistic and distributed scenario. In no particular order, here are some notes:
+
+* while Lambda based orchestration for the data product itself is great (as long as transformation happens within the Lambda timeout), all the input port manifestation logic should really be in a separate service. We included a mock of streaming data to make the implementation self-contained, but in a real-world scenario the input port would be a separate service that would stream data into the input port;
+* by keeping a "mono-repo", we are able to have the descriptor, the lambda (the "outer loop") and the DAG / product logic (the "inner loop") in one place. This is great for a reference implementation, and allows us to download the DAG code and the descriptor dynamically using GitHub as the external source of "code truth". However, different patterns could also work in a real-world scenario: for example, if we mode the DAG to its own repo, we could read the descriptor at the start of the Lambda entry function, and use it to parametrize fully the downstream logic (which is now half-hardcoded, half-dynamic);
+* we mostly rely on built-in AWS primitives for logging and monitoring (i.e. log in into CloudWatch). In a real-world scenario we would want to be notified, expecially when things do not go as planned. While Bauplan itself gives programmatic access to Job status and logs, an external process should be in charge of that (and the other, AWS-speficic, traces);
+* the mapping between data quality checks as declarative _desiderata_ and actual, correct Bauplan code that gets run "on the fly" inside the handler is not done mostly by hard-coding cases and doing quick string templating. We plan to incorporate some of the code-gen functionalities into future releases of the Bauplan SDK, but for now any change to the quality checks would require a change in the handler code.
+
+Everything is left as an exercise for the reader: please do reach out if you end up improving on this design!
 
 ## License
 
