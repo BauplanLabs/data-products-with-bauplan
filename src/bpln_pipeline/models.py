@@ -44,7 +44,6 @@ def calculate_trip_stats(
 
     """
     import pandas as pd
-    assert 1 == 2, "This is a test error"
     print(f"\n\n===> Number of trips retrieved: {trips.num_rows}\n\n")
     df = trips.to_pandas()
     # calculate the average of the numerical columns

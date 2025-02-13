@@ -304,7 +304,9 @@ def lambda_handler(event, context):
                 },
                 client_timeout=500
             )
-            print(f"Pipeline run, id: {run_state.job_id}")
+            print(f"Pipeline run, id: {run_state.job_id}, status: {run_state.job_status}")
+            if run_state.job_status.lower() == 'failed':
+                raise Exception(f"Pipeline run failed: {run_state.job_status}")
             # if all goes well, we merge the branch into main
             # as the output port of the data product
             bpln_client.merge_branch(
