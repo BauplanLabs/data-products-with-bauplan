@@ -11,7 +11,7 @@ import json
 # some constants - make sure to use the correct bucket and git repo ;-)
 MY_BUCKET = 'hello-data-products-with-bauplan'
 DATA_FOLDER = 'raw'
-CODE_REPO_URL = 'https://github.com/BauplanLabs/bauplan-data-products-preview'
+CODE_REPO_URL = 'https://github.com/BauplanLabs/data-products-with-bauplan'
 GB_PER_ITERATION = 0.2
 NUMERICAL_COLUMNS = [ 'Tip_amount', 'Tolls_amount']
 # input port vars are the same as the JSON configuration - they are included
