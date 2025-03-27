@@ -1,54 +1,78 @@
-# bauplan-data-products-preview
-Playground for data product blog post with Bauplan - will be moved to a stable place once done
+# Serverless Data Product with Bauplan
+
+This example demonstrates how to build a *pure data product* using Bauplan and AWS Lambda — no infrastructure required, fully declarative, and aligned with the `Write-Audit-Publish` pattern.
+
+The product, `yellowTripsDailyStats`, computes and exposes daily average statistics over NYC taxi trips, consuming data from a mock upstream system.
+
 
 ## Overview
 
-[Bauplan](https://www.bauplanlabs.com/) is the easiest and fastest way to build data products over object storage. 
+This data product computes daily averages over tip, toll, and total amounts of taxi rides in NYC. The result is published via an output port with guaranteed data quality and discoverability, managed through a platform-native descriptor.
 
-This is a reference implementation for a data product according to the best practices in [Managing Data as a Product](https://github.com/PacktPublishing/Managing-Data-as-a-Product), and showcases a self-standing data product running on a AWS Lambda with Bauplan.
+All orchestration logic runs in a scheduled AWS Lambda (`handler.py`). All data logic runs in Bauplan (`bpln_pipeline/`).
 
-_Quick links_:
 
-* For more context and background, check out the companion blog post LINK HERE.
-* A video walkthrough of the system running from our laptop is LINK HERE.
+## Setup and Execution
 
-## Data flow
+### 1. Get a Bauplan key
 
-This reference data product takes as input a table containing taxi trips with toll, tip and total USD amount, and produces as output a table with the averages for each date, certified for data quality through tests. The data flow for this reference implementation is as follows:
+Sign up for the Bauplan sandbox and request an API key:
 
-* the `data-product-descriptor.json` in the repo contains the configuration for the data product;
-* the AWS Lambda (`handler.py` in the `serverless` directory) is used to first simulate the input port for the product - it does so by mocking trips data and loading them into Bauplan through the `bauplan` Python package;
-* once the input port is thus populated, the handler kicks off the computation of the actual data product: it downloads the latest version of the transformation code (a [Bauplan DAG](https://docs.bauplanlabs.com/en/latest/concepts/models.html)) from GitHub, and runs it from the input port on a temporary [branch](https://docs.bauplanlabs.com/en/latest/concepts/branches.html); sincen `data-product-descriptor.json` is part of the repo in this case, the configuration is also downloaded and used to guide the computation with some dynamic parameters;
-* the output table is verified for data quality through tests: the declarative tests in the configuration gets translated on the fly to Bauplan [expectations](https://docs.bauplanlabs.com/en/latest/examples/expectations.html) and run on the output table;
-* if the tests pass, the output table is certified and the data product is considered ready for downstream consumer: the branch is merged into the output port branch as specified in the configuration; if the tests fail, the output port is not updated and the temporary branch is left open for inspection.
+https://www.bauplanlabs.com/#join
 
-The entire system runs on a trigger or on a schedule as a self-contained, serverless system that does not need any infrastructure, data copy, sync between environments, or manual intervention.
+Complete the 3-minute tutorial to verify your setup.
 
-## Setup
+### 2. Configure your AWS account
 
-* If you don't have a Bauplan key for the free sandbox, require one [here](https://www.bauplanlabs.com/#join). Complete the [3 min tutorial](https://docs.bauplanlabs.com/en/latest/tutorial/index.html) to check your setup and get familiar with the platform.
-* We assume you have an AWS account, and local credentials properly configured and compatible with launching Lambdas.
-* We assume you have Docker installed in your laptop (it will be used to build the Lambda image).
-* We use the [serverless framework](https://www.serverless.com/framework) to manage Lambda deployment as code, but the same lambda could be deployed manually if you prefer to go through the AWS console. Make sure the framework is installed and properly configured to use the proper AWS credentials.
+- Make sure your AWS credentials are available locally and have permissions to deploy Lambdas and access S3.
+- Create an S3 bucket and update
+    - in [`handler.py`](http://handler.py)
 
-## How to run it
+    ```bash
+    MY_BUCKET = 'YOUR-BUCKET’
+    ```
 
-Change the `bauplan_user` into the `serverless.yml` to reflect your Bauplan username. Then setup your Bauplan key as an environment variable:
+    - in `serverless.yml`
+
+    ```bash
+    arn:aws:s3:::YOUR-BUCKET
+    arn:aws:s3:::YOUR-BUCKET/*
+    ```
+
+
+### 3. Install dependencies
+
+You need [Docker installed in your laptop](https://docs.docker.com/desktop/) and running (it will be used to build the Lambda image) and the Serverless framework installed:
 
 ```bash
-export BAUPLAN_KEY=<your_bauplan_key>
+npm install -g serverless@3.40.0
 ```
 
-Now, you can cd into the `serverless` directory and deploy the lamnda with the serverless framework:
+### 4. Set your environment variables
+
+Update the `bauplan_user` field in `serverless.yml` to match your Bauplan username.
+
+Then export your Bauplan key:
+
+```bash
+export BPLN_KEY=<your_bauplan_key>
+export BPLN_USER=<your_bauplan_usename>
+```
+
+### 5. Deploy the Lambda
 
 ```bash
 cd serverless
 serverless deploy
 ```
 
-That's it! The lambda is now deployed and ready to run. You can trigger it manually from the AWS console, or wait for the schedule (as specified in the `serverless.yml`) to kick in. Every time the lambda runs, the above data flow is executed, and the output table is updated with the latest averages for the taxi trips.
+The Lambda will run every 30 minutes, as configured in `serverless.yml`.
 
-NOTE: if you wish to test the data transformation logic in isolation and interactively, you can use the Bauplan CLI as you would normally do with any DAG (the Bauplan sandbox in fact contains a copy of the input port data in the `main` branch):
+### 6. (Optional) Trigger manually
+
+You can trigger the Lambda manually from the AWS Console.
+
+### 7. (Optional) Test the pipeline interactively
 
 ```bash
 python3 -m venv venv
@@ -58,17 +82,79 @@ cd src/bpln_pipeline
 bauplan run --namespace tlc_trip_record --dry-run --preview head
 ```
 
-## Where to go from here?
+## Design
+
+This data product follows Hexagonal Architecture:
+
+- **Input port**: a mock stream of NYC TLC trip records
+- **Pipeline**: computes daily averages
+- **Output port**: publishes summary with data quality guarantees
+
+### Input schema
+
+```
+tripsTable:
+- tpep_pickup_datetime (string)
+- Tip_amount (number)
+- Tolls_amount (number)
+- Total_amount (number)
+```
+
+### Output schema
+
+```
+amountStatsTable:
+- tripDate (string)
+- avgTotal (number)
+- avgTip (number)
+- avgTolls (number)
+```
+
+With expectations:
+
+- No duplicates or nulls in `tripDate`
+- Freshness: `tripDate` must be within 1 day from today
+
+![hexagon](src/img/hexagon.png)
+
+## How it Works
+
+1. Mock data is ingested to the input port using the Bauplan SDK.
+2. The handler pulls the latest DAG and descriptor from GitHub.
+3. A sandbox branch is created and the DAG is run.
+4. Quality checks are generated from the descriptor and injected.
+5. If checks pass, the output table is merged into `main`.
+
+Failures leave the sandbox open for inspection and rollback.
+
+## Write-Audit-Publish with Bauplan
+
+This product follows the WAP pattern:
+
+- **Write**: to a temporary branch
+- **Audit**: quality checks via Arrow-native expectations
+- **Publish**: only merge if all checks pass
+
+```bash
+bauplan branch create user.my_product
+bauplan checkout user.my_product
+bauplan run
+bauplan merge user.my_product -from main
+```
+
+This allows for fast, safe, zero-copy updates with no environment syncing.
+
+## Where to Go From Here?
 
 There are of course a few things that could be improved in this reference implementation, when considering a more realistic and distributed scenario. In no particular order, here are some notes:
 
-* while Lambda based orchestration for the data product itself is great (as long as transformation happens within the Lambda timeout), all the input port manifestation logic should really be in a separate service. We included a mock of streaming data to make the implementation self-contained, but in a real-world scenario the input port would be a separate service that would stream data into the input port;
-* by keeping a "mono-repo", we are able to have the descriptor, the lambda (the "outer loop") and the DAG / product logic (the "inner loop") in one place. This is great for a reference implementation, and allows us to download the DAG code and the descriptor dynamically using GitHub as the external source of "code truth". However, different patterns could also work in a real-world scenario: for example, if we mode the DAG to its own repo, we could read the descriptor at the start of the Lambda entry function, and use it to parametrize fully the downstream logic (which is now half-hardcoded, half-dynamic);
-* we mostly rely on built-in AWS primitives for logging and monitoring (i.e. log in into CloudWatch). In a real-world scenario we would want to be notified, expecially when things do not go as planned. While Bauplan itself gives programmatic access to Job status and logs, an external process should be in charge of that (and the other, AWS-speficic, traces);
-* the mapping between data quality checks as declarative _desiderata_ and actual, correct Bauplan code that gets run "on the fly" inside the handler is not done mostly by hard-coding cases and doing quick string templating. We plan to incorporate some of the code-gen functionalities into future releases of the Bauplan SDK, but for now any change to the quality checks would require a change in the handler code.
+- while Lambda based orchestration for the data product itself is great (as long as transformation happens within the Lambda timeout), all the input port manifestation logic should really be in a separate service. We included a mock of streaming data to make the implementation self-contained, but in a real-world scenario the input port would be a separate service that would stream data into the input port;
+- by keeping a "mono-repo", we are able to have the descriptor, the lambda (the "outer loop") and the DAG / product logic (the "inner loop") in one place. This is great for a reference implementation, and allows us to download the DAG code and the descriptor dynamically using GitHub as the external source of "code truth". However, different patterns could also work in a real-world scenario: for example, if we mode the DAG to its own repo, we could read the descriptor at the start of the Lambda entry function, and use it to parametrize fully the downstream logic (which is now half-hardcoded, half-dynamic);
+- we mostly rely on built-in AWS primitives for logging and monitoring (i.e. log in into CloudWatch). In a real-world scenario we would want to be notified, expecially when things do not go as planned. While Bauplan itself gives programmatic access to Job status and logs, an external process should be in charge of that (and the other, AWS-speficic, traces);
+- the mapping between data quality checks as declarative *desiderata* and actual, correct Bauplan code that gets run "on the fly" inside the handler is not done mostly by hard-coding cases and doing quick string templating. We plan to incorporate some of the code-gen functionalities into future releases of the Bauplan SDK, but for now any change to the quality checks would require a change in the handler code.
 
 Everything is left as an exercise for the reader: please do reach out if you end up improving on this design!
 
-## License
+**License**
 
-This reference implementation is released under the MIT License. Bauplan is built by [BauplanLabs](https://www.bauplanlabs.com/), all rights reserved.
+This reference implementation is released under the MIT License. Bauplan is built by [BauplanLabs](https://www.bauplanlabs.com/), all rights reserved.

@@ -13,7 +13,7 @@ provider:
         platform: linux/amd64
   environment:
     HOME: /tmp
-  
+
   # Define IAM Role statements so the Lambda can access your S3 bucket
   iamRoleStatements:
     - Effect: Allow
@@ -34,9 +34,9 @@ functions:
     ephemeralStorageSize: 1024
     environment:
       bauplan_key: ${env:BPLN_KEY}
-      bauplan_user: jacopo
+      bauplan_user: ${env:BPLN_USER}
     image:
       name: dataproductimage
     events:
       - schedule: rate(30 minutes)
-    
+
