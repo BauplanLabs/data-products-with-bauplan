@@ -26,7 +26,7 @@ Complete the 3-minute tutorial to verify your setup.
 
 - Make sure your AWS credentials are available locally and have permissions to deploy Lambdas and access S3.
 - Create an S3 bucket and update
-    - in [`handler.py`](http://handler.py)
+    - in `handler.py`
 
     ```bash
     MY_BUCKET = 'YOUR-BUCKET’
